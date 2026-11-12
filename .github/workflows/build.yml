@@ -1,0 +1,54 @@
+# スプレッドシートのお知らせを取り込んでサイトを作り直し、GitHub Pages に公開します。
+# ・1時間ごとに自動で実行
+# ・スプレッドシートのメニュー「サイトに今すぐ反映する」でも実行
+# ・このリポジトリにファイルを push したときも実行
+name: build-and-deploy
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '7 * * * *'
+  repository_dispatch:
+    types: [sheet-updated]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install beautifulsoup4
+      - name: Build
+        env:
+          GAS_URL: ${{ vars.GAS_URL }}
+          SITE_URL: ${{ vars.SITE_URL }}
+          PREVIEW: ${{ vars.PREVIEW }}
+        run: python build.py
+      - name: Custom domain
+        if: ${{ vars.CUSTOM_DOMAIN != '' }}
+        run: echo "${{ vars.CUSTOM_DOMAIN }}" > dist/CNAME
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

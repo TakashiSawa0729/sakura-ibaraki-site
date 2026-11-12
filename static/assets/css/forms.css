@@ -1,0 +1,56 @@
+/* 予約カレンダー・お問い合わせフォーム */
+.sk-booking, .sk-contact { --sk-accent: #f0753a; --sk-line: #e6e0d8; margin: 2em 0; font-size: 15px; }
+.sk-loading, .sk-msg { padding: 1.2em; background: #fff8f2; border-radius: 10px; text-align: center; }
+
+.sk-cal { background: #fff; border-radius: 14px; padding: 16px; box-shadow: 0 2px 10px rgba(0,0,0,.06); }
+.sk-cal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.sk-cal-title { font-size: 1.25em; font-weight: 700; }
+.sk-nav { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--sk-line); background: #fff; font-size: 24px; line-height: 1; cursor: pointer; }
+.sk-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.sk-wd { text-align: center; font-size: .85em; padding: 4px 0; color: #777; }
+.sk-wd0 { color: #d9534f; } .sk-wd6 { color: #337ab7; }
+.sk-day { min-height: 78px; border: 1px solid var(--sk-line); border-radius: 8px; padding: 4px; background: #fafafa; text-align: left; font: inherit; color: inherit; display: flex; flex-direction: column; gap: 2px; }
+.sk-empty { border: none; background: none; }
+.sk-past { opacity: .45; }
+.sk-has { background: #fff; }
+.sk-open { cursor: pointer; border-color: var(--sk-accent); }
+.sk-open:hover, .sk-open:focus { background: #fff3ea; outline: none; }
+.sk-num { font-weight: 700; font-size: .9em; }
+.sk-w0 .sk-num { color: #d9534f; } .sk-w6 .sk-num { color: #337ab7; }
+.sk-mark { font-size: 1.1em; color: var(--sk-accent); font-weight: 700; }
+.sk-title { font-size: .72em; line-height: 1.3; color: #555; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+.sk-legend { font-size: .8em; color: #777; margin: 8px 0 0; text-align: right; }
+@media (max-width: 575px) {
+  .sk-cal { padding: 8px; }
+  .sk-day { min-height: 56px; padding: 2px; }
+  .sk-title { display: none; }
+}
+
+.sk-panel { margin-top: 20px; scroll-margin-top: 90px; }
+.sk-panel-title { font-size: 1.2em; margin: 0 0 10px; }
+.sk-slot { display: flex; width: 100%; gap: 12px; align-items: center; padding: 14px 16px; margin-bottom: 8px; background: #fff; border: 2px solid var(--sk-accent); border-radius: 12px; font: inherit; cursor: pointer; text-align: left; }
+.sk-slot:hover { background: #fff3ea; }
+.sk-slot-time { font-weight: 700; white-space: nowrap; }
+.sk-slot-title { flex: 1; }
+.sk-slot-remain { font-size: .85em; color: var(--sk-accent); white-space: nowrap; }
+.sk-selected { background: #fff3ea; padding: 12px 16px; border-radius: 10px; margin-bottom: 16px; }
+
+.sk-form { background: #fff; border-radius: 14px; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,.06); }
+.sk-field { padding: 12px 0; border-bottom: 1px dotted var(--sk-line); }
+.sk-label { display: block; font-weight: 700; margin-bottom: 6px; }
+.sk-req, .sk-opt { display: inline-block; font-size: .72em; font-weight: 400; padding: 1px 6px; border-radius: 4px; margin-left: 8px; vertical-align: middle; }
+.sk-req { background: #e2553b; color: #fff; } .sk-opt { background: #eee; color: #666; }
+.sk-form input[type=text], .sk-form input[type=email], .sk-form input[type=tel], .sk-form input[type=date], .sk-form select, .sk-form textarea {
+  width: 100%; padding: 10px 12px; border: 1px solid #ccc; border-radius: 8px; font: inherit; background: #fff; box-sizing: border-box; }
+.sk-form input:focus, .sk-form select:focus, .sk-form textarea:focus { border-color: var(--sk-accent); outline: 2px solid rgba(242,122,60,.2); }
+.sk-choices { display: flex; flex-wrap: wrap; gap: 8px 20px; }
+.sk-choice { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.sk-help { font-size: .85em; color: #666; margin: 6px 0 0; }
+.sk-agree { display: block; margin: 16px 0 4px; }
+.sk-hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+.sk-result { color: #c0392b; white-space: pre-line; margin: 12px 0 0; }
+.sk-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 18px; }
+.sk-submit { padding: 14px; border: none; border-radius: 999px; background: var(--sk-accent); color: #fff; font: inherit; font-weight: 700; font-size: 1.05em; cursor: pointer; }
+.sk-submit:disabled { opacity: .6; cursor: wait; }
+.sk-back { padding: 12px; border: 1px solid #ccc; border-radius: 999px; background: #fff; font: inherit; cursor: pointer; }
+.sk-done { background: #f0f9ec; border: 1px solid #b6dba4; border-radius: 12px; padding: 20px; text-align: center; font-weight: 700; }

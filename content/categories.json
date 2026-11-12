@@ -1,0 +1,26 @@
+[
+ {
+  "id": 4,
+  "name": "さくらこども園",
+  "slug": "sakura-kodomoen",
+  "labelStyle": "color:#fff;background-color:#ff963a"
+ },
+ {
+  "id": 5,
+  "name": "さくらランド",
+  "slug": "sakura-land",
+  "labelStyle": "color:#fff;background-color:#e56262"
+ },
+ {
+  "id": 6,
+  "name": "カラフル",
+  "slug": "colorful",
+  "labelStyle": "color:#fff;background-color:#40e84e"
+ },
+ {
+  "id": 1,
+  "name": "未分類",
+  "slug": "uncategorized",
+  "labelStyle": ""
+ }
+]

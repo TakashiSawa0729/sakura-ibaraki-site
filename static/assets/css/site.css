@@ -1,0 +1,13 @@
+/* WordPress から移行したあとの調整用 CSS（元テーマの見た目は common.css が担当） */
+
+/* カテゴリー一覧ページ */
+.sk-archive {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 24px;
+  margin: 2em 0;
+}
+.sk-archive > .vk_post { width: auto; max-width: none; margin: 0; padding: 0; }
+
+/* 記事本文の画像が横にはみ出さないように */
+.entry-body img { max-width: 100%; height: auto; }
