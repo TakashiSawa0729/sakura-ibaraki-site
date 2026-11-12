@@ -26,6 +26,7 @@ var TZ = 'Asia/Tokyo';
 function onOpen() {
   SpreadsheetApp.getUi().createMenu('さくらサイト')
     .addItem('サイトに今すぐ反映する', 'publishNow')
+    .addItem('結果メールを送る（当選・落選）', 'sendResultMails')
     .addSeparator()
     .addItem('初期設定（シートを作る）', 'setup')
     .addToUi();
@@ -303,6 +304,109 @@ function notifyBooking_(facility, slot, fields, values) {
   if (staff) {
     MailApp.sendEmail({ to: staff, subject: '【' + facility + '】新しい' + (isLottery ? '申込' : '予約') + '：' + when, body: when + '\n\n' + detail, name: 'サイト予約通知', replyTo: to || undefined });
   }
+}
+
+// ------------------------------------------------------------------ 結果メール（当選・落選）
+var RESULT_MAIL_DEFAULTS = [
+  ['当選メールの件名', '【{施設}】ご参加が決まりました（{日時}）', '{施設} {日時} {イベント} {お名前} が使えます'],
+  ['当選メールの本文',
+   '{お名前} 様\n\nこのたびは{施設}にお申し込みいただき、ありがとうございます。\n抽選の結果、下記の日程でご参加いただけることになりました。\n\n◆日時\n{日時}\n◆内容\n{イベント}\n\n当日は、お気をつけてお越しください。\nご都合が悪くなった場合は、お早めにお電話でご連絡をお願いいたします。',
+   '{施設} {日時} {イベント} {お名前} が使えます。最後に「予約メールの署名」が付きます'],
+  ['落選メールの件名', '【{施設}】抽選結果のお知らせ（{日時}）', ''],
+  ['落選メールの本文',
+   '{お名前} 様\n\nこのたびは{施設}にお申し込みいただき、ありがとうございます。\n申し訳ございませんが、抽選の結果、下記の日程はご希望に添えませんでした。\n\n◆日時\n{日時}\n◆内容\n{イベント}\n\nキャンセルが出た場合は、Instagramでお知らせします。\nまたのお申し込みをお待ちしております。',
+   '最後に「予約メールの署名」が付きます']
+];
+
+/** 「設定」タブに結果メールの文面がなければ追加する */
+function ensureResultMailSettings_() {
+  var sh = SpreadsheetApp.getActive().getSheetByName(SHEETS.settings);
+  var keys = sh.getRange(1, 1, Math.max(sh.getLastRow(), 1), 1).getValues().map(function (r) { return r[0]; });
+  RESULT_MAIL_DEFAULTS.forEach(function (row) {
+    if (keys.indexOf(row[0]) < 0) {
+      sh.appendRow(row);
+      sh.getRange(sh.getLastRow(), 2, 1, 2).setWrap(true);
+    }
+  });
+}
+
+function fillTemplate_(text, vars) {
+  return String(text || '').replace(/\{(施設|日時|イベント|お名前)\}/g, function (_, k) { return vars[k] || ''; });
+}
+
+function prettyWhen_(s) {
+  // "2026-11-18 10:00" → "11月18日（水）10:00"（セルが日付として読み込まれていても同じ形にする）
+  if (s instanceof Date) s = Utilities.formatDate(s, TZ, 'yyyy-MM-dd HH:mm');
+  var m = String(s).match(/(\d{4})-(\d{1,2})-(\d{1,2})\s*(\d{1,2}:\d{2})?/);
+  if (!m) return String(s);
+  var d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  var w = ['日', '月', '火', '水', '木', '金', '土'][d.getDay()];
+  return Number(m[2]) + '月' + Number(m[3]) + '日（' + w + '）' + (m[4] || '');
+}
+
+/** 「予約」タブで状態が「当選」「落選」で、まだメールを送っていない人にまとめて送る */
+function sendResultMails() {
+  var ui = SpreadsheetApp.getUi();
+  ensureResultMailSettings_();
+  var sh = SpreadsheetApp.getActive().getSheetByName(SHEETS.bookings);
+  var lastCol = sh.getLastColumn();
+  var head = sh.getRange(1, 1, 1, lastCol).getValues()[0];
+  var sentCol = head.indexOf('メール送信日時');
+  if (sentCol < 0) {
+    sentCol = head.length;
+    sh.getRange(1, sentCol + 1).setValue('メール送信日時').setFontWeight('bold').setBackground('#fde7d6');
+    head.push('メール送信日時');
+  }
+  var lastRow = sh.getLastRow();
+  if (lastRow < 2) { ui.alert('予約がまだありません。'); return; }
+  var rows = sh.getRange(2, 1, lastRow - 1, head.length).getValues();
+  var col = function (name) { return head.indexOf(name); };
+  // メールアドレスの列（フォーム項目で種類が email のもの）
+  var fv = SpreadsheetApp.getActive().getSheetByName(SHEETS.fields).getDataRange().getValues();
+  var emailLabels = fv.filter(function (r) { return r[3] === 'email'; }).map(function (r) { return r[2]; });
+
+  var targets = [];
+  rows.forEach(function (r, i) {
+    var state = r[col('状態')];
+    if ((state !== '当選' && state !== '落選') || r[sentCol]) return;
+    var to = '';
+    emailLabels.forEach(function (l) { if (!to && col(l) >= 0 && r[col(l)]) to = String(r[col(l)]).trim(); });
+    targets.push({ row: i + 2, state: state, to: to, r: r });
+  });
+  var noMail = targets.filter(function (t) { return !t.to; });
+  targets = targets.filter(function (t) { return t.to; });
+  if (!targets.length) {
+    ui.alert('送る相手がいません。\n「状態」が当選・落選で、「メール送信日時」が空の行が対象です。' + (noMail.length ? '\n（メールアドレスが空の行が ' + noMail.length + ' 件あります）' : ''));
+    return;
+  }
+  var win = targets.filter(function (t) { return t.state === '当選'; }).length;
+  var ok = ui.alert('結果メールを送ります',
+    '当選 ' + win + ' 件、落選 ' + (targets.length - win) + ' 件、合計 ' + targets.length + ' 件に送ります。よろしいですか？' +
+    (noMail.length ? '\n（メールアドレスが空の ' + noMail.length + ' 件は送りません）' : '') +
+    '\n\n残りの送信可能数（今日）: ' + MailApp.getRemainingDailyQuota(), ui.ButtonSet.OK_CANCEL);
+  if (ok !== ui.Button.OK) return;
+
+  var from = setting_('メールの差出人名', 'さくらこども園');
+  var sign = setting_('予約メールの署名', '');
+  var sent = 0, failed = [];
+  targets.forEach(function (t) {
+    var r = t.r;
+    var facility = r[col('施設')];
+    var name = (col('保護者の氏名') >= 0 && r[col('保護者の氏名')]) || (col('お子さまのお名前') >= 0 && r[col('お子さまのお名前')]) || '';
+    var vars = { '施設': facility, '日時': prettyWhen_(r[col('日付')]), 'イベント': r[col('イベント')], 'お名前': name };
+    var key = t.state === '当選' ? '当選' : '落選';
+    var subject = fillTemplate_(setting_(key + 'メールの件名', ''), vars);
+    var body = fillTemplate_(setting_(key + 'メールの本文', ''), vars) + (sign ? '\n\n' + sign : '');
+    var replyTo = setting_(facility + 'の通知先メール', '');
+    try {
+      MailApp.sendEmail({ to: t.to, subject: subject, body: body, name: from, replyTo: replyTo || undefined });
+      sh.getRange(t.row, sentCol + 1).setValue(new Date());
+      sent++;
+    } catch (e) {
+      failed.push(t.row + '行目（' + e.message + '）');
+    }
+  });
+  ui.alert(sent + ' 件のメールを送りました。' + (failed.length ? '\n送れなかったもの:\n' + failed.join('\n') : ''));
 }
 
 // ------------------------------------------------------------------ お問い合わせ
