@@ -20,6 +20,9 @@ JST = dt.timezone(dt.timedelta(hours=9))
 NOW = dt.datetime.now(JST)
 # 確認用サイトとして公開するときは PREVIEW=1（検索エンジンに載せない）
 PREVIEW = os.environ.get('PREVIEW', '').lower() in ('1', 'true', 'yes')
+# サイトを /sakura-ibaraki-site/ のような下の階層で公開するとき（GitHub の標準アドレスで確認する場合など）
+_bp = (os.environ.get('BASE_PATH') or CONFIG.get('basePath') or '').strip('/')
+BASE_PATH = '/' + _bp if _bp else ''
 
 def read(p):
     with open(os.path.join(ROOT, p), encoding='utf-8') as f:
@@ -345,7 +348,7 @@ def build_pages(posts):
         extra_head = ''
         if s.select_one('.sk-booking') or s.select_one('.sk-contact'):
             extra_head = '<link rel="stylesheet" href="/assets/css/forms.css?v=%s"><script>window.SK_CONFIG=%s;</script><script src="/assets/js/forms.js?v=%s" defer></script>' % (
-                CSS_VER, json.dumps({'gasUrl': os.environ.get('GAS_URL') or CONFIG.get('gasUrl', ''), 'recaptchaKey': CONFIG.get('recaptchaKey', '')}), JS_VER)
+                CSS_VER, json.dumps({'gasUrl': os.environ.get('GAS_URL') or CONFIG.get('gasUrl', ''), 'recaptchaKey': CONFIG.get('recaptchaKey', ''), 'base': BASE_PATH}), JS_VER)
         write(meta['path'], page_html(meta['title'], str(s), meta['path'], meta.get('bodyClass', ''),
                                       meta.get('description', ''), meta.get('ogImage', ''), css, extra_head))
         print('page', meta['path'])
@@ -478,6 +481,28 @@ def build_extras(posts):
     write('assets/data/news.json', json.dumps([{'title': p['title'], 'url': url_path(p['path']), 'date': p['_date'].date().isoformat(),
                                                  'cats': p['cats'], 'thumb': p.get('thumb', '')} for p in posts[:50]], ensure_ascii=False))
 
+def apply_base_path():
+    """BASE_PATH があるとき、/ で始まるリンク・画像・CSS の参照すべてに前置きを付ける"""
+    if not BASE_PATH:
+        return
+    attr = re.compile(r'((?:href|src|action|poster|content)=["\'])/(?!/)')
+    url = re.compile(r'(url\(\s*["\']?)/(?!/)')
+    for root, _, files in os.walk(DIST):
+        for f in files:
+            if not f.endswith(('.html', '.css')):
+                continue
+            p = os.path.join(root, f)
+            with open(p, encoding='utf-8') as fh:
+                t = fh.read()
+            n = url.sub(r'\1' + BASE_PATH + '/', t)
+            if f.endswith('.html'):
+                n = attr.sub(r'\1' + BASE_PATH + '/', n)
+            if n != t:
+                tmp = p + '.tmp'
+                with open(tmp, 'w', encoding='utf-8') as fh:
+                    fh.write(n)
+                os.replace(tmp, p)  # ハードリンク元（static/）を書き換えないよう、新しいファイルとして置き換える
+
 def main():
     # フォルダ自体は残して中身だけ消す（確認用サーバーを起動したままでも反映されるように）
     os.makedirs(DIST, exist_ok=True)
@@ -498,6 +523,7 @@ def main():
         build_post(p, older, newer)
     build_archives(posts)
     build_extras(posts)
+    apply_base_path()
     print('完了: 記事 %d 件 → %s' % (len(posts), DIST))
 
 if __name__ == '__main__':

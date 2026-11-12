@@ -8,5 +8,6 @@
   "defaultCategory": 4,
   "newsCsvUrl": "",
   "gasUrl": "https://script.google.com/macros/s/AKfycbwxid-r3z2AixUnkggkPYxWaW22Otp9Bb4qAWBLYqveVCQ5flgminh4HaRHM1CW2E1k/exec",
-  "recaptchaKey": ""
+  "recaptchaKey": "",
+  "basePath": "/sakura-ibaraki-site"
 }

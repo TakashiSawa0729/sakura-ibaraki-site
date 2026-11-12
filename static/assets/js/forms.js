@@ -210,7 +210,7 @@
       el.innerHTML = '';
       var msg = h('div', { class: 'sk-result', role: 'alert' });
       var agree = h('label', { class: 'sk-agree' }, [h('input', { type: 'checkbox', name: 'agree', required: true }), ' ',
-        h('a', { href: '/privacy-policy/', target: '_blank', text: 'プライバシーポリシー' }), 'をお読みいただき、同意の上、送信してください。']);
+        h('a', { href: (CFG.base || '') + '/privacy-policy/', target: '_blank', text: 'プライバシーポリシー' }), 'をお読みいただき、同意の上、送信してください。']);
       var submit = h('button', { type: 'submit', class: 'sk-submit', text: '送信する' });
       var form = h('form', { class: 'sk-form', novalidate: true }, [
         h('p', { class: 'sk-help', text: '※営業・セールスを目的とした送信はお控えくださいますようお願いいたします。' }),

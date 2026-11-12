@@ -71,6 +71,10 @@ cd dist && python3 -m http.server 8000   # → http://localhost:8000
 - Apps Script の「プロジェクトの設定」→ スクリプト プロパティに `GITHUB_TOKEN` として保存
 - 「設定」シートの「GitHubリポジトリ」に `ユーザー名/リポジトリ名` を入れる
 
+### 確認用アドレス（GitHub の標準アドレス）で見る
+`config.json` の `basePath` が `/sakura-ibaraki-site` のあいだは、https://takashisawa0729.github.io/sakura-ibaraki-site/ で正しく表示されます。
+独自ドメイン（new.sakura-ibaraki.jp や sakura-ibaraki.jp）で公開するときは `basePath` を空（""）にしてください。
+
 ### 4. ドメインの切り替え
 DNS で sakura-ibaraki.jp を GitHub Pages に向けます（A レコード 185.199.108.153 ほか、www は CNAME）。
 メール（@sakura-ibaraki.jp）の MX レコードは変更しないでください。
