@@ -104,13 +104,42 @@ def save_image(url, key):
     except Exception as e:
         print('  画像を取得できません:', url, e)
         return None
-    ext = {'image/png': '.png', 'image/gif': '.gif', 'image/webp': '.webp'}.get(ctype.split(';')[0], '.jpg')
-    name = 'assets/news/%s%s' % (key, ext)
-    p = os.path.join(DIST, name)
-    os.makedirs(os.path.dirname(p), exist_ok=True)
-    with open(p, 'wb') as f:
-        f.write(data)
-    return '/' + name
+    return store_image(data, ctype, key)
+
+MAX_SIDE = 1600
+
+def pil():
+    try:
+        from PIL import Image, ImageOps
+    except ImportError:  # GitHub Actions では初回に自動で入れる
+        import subprocess
+        subprocess.run([sys.executable, '-m', 'pip', 'install', '-q', 'pillow'], check=True)
+        from PIL import Image, ImageOps
+    return Image, ImageOps
+
+def store_image(data, ctype, key):
+    """写真を長辺1600pxまでに縮小・圧縮して dist/assets/news/ に保存。(パス, 幅, 高さ) を返す"""
+    Image, ImageOps = pil()
+    os.makedirs(os.path.join(DIST, 'assets/news'), exist_ok=True)
+    try:
+        im = Image.open(io.BytesIO(data))
+        im = ImageOps.exif_transpose(im)  # スマホ写真の向きを直す
+        im.thumbnail((MAX_SIDE, MAX_SIDE), Image.LANCZOS)
+        has_alpha = im.mode in ('RGBA', 'LA') or (im.mode == 'P' and 'transparency' in im.info)
+        if has_alpha:
+            name = 'assets/news/%s.png' % key
+            im.save(os.path.join(DIST, name), 'PNG', optimize=True)
+        else:
+            name = 'assets/news/%s.jpg' % key
+            im.convert('RGB').save(os.path.join(DIST, name), 'JPEG', quality=82, optimize=True, progressive=True)
+        return '/' + name, im.size[0], im.size[1]
+    except Exception as e:
+        print('  画像として読み込めないため、そのまま保存します:', key, e)
+        ext = {'image/png': '.png', 'image/gif': '.gif', 'image/webp': '.webp'}.get(ctype.split(';')[0], '.jpg')
+        name = 'assets/news/%s%s' % (key, ext)
+        with open(os.path.join(DIST, name), 'wb') as f:
+            f.write(data)
+        return '/' + name, 0, 0
 
 def text_to_html(text):
     out = []
@@ -121,6 +150,40 @@ def text_to_html(text):
         h = re.sub(r'(https?://[^\s<]+)', r'<a href="\1" target="_blank" rel="noopener">\1</a>', h)
         out.append('<p class="wp-block-paragraph">%s</p>' % h)
     return '\n'.join(out)
+
+def parse_layout(spec, n):
+    """「写真の並び」(例: 3,2,3) を1行ごとの枚数のリストにする。足りない分は3枚ずつ"""
+    rows = []
+    for part in re.split(r'[,、，\s]+', str(spec or '').translate(str.maketrans('０１２３４５６７８９', '0123456789'))):
+        if part.isdigit() and int(part) > 0:
+            rows.append(min(int(part), 6))
+    out, left = [], n
+    for c in rows:
+        if left <= 0:
+            break
+        out.append(min(c, left))
+        left -= c
+    while left > 0:
+        out.append(min(3, left))
+        left -= 3
+    return out
+
+def gallery_html(photos, spec):
+    """photos: [(パス, 幅, 高さ, 説明)]"""
+    if not photos:
+        return ''
+    html, i = ['<div class="sk-gallery">'], 0
+    for cols in parse_layout(spec, len(photos)):
+        html.append('<div class="sk-gallery-row" style="--cols:%d" data-cols="%d">' % (cols, cols))
+        for path, w, h, cap in photos[i:i + cols]:
+            size = ' width="%d" height="%d"' % (w, h) if w and h else ''
+            capt = '<figcaption>%s</figcaption>' % htmllib.escape(cap).replace('\n', '<br>') if cap.strip() else ''
+            html.append('<figure class="sk-photo"><img src="%s" alt="%s" loading="lazy" decoding="async"%s>%s</figure>'
+                        % (path, htmllib.escape(cap.strip()), size, capt))
+        html.append('</div>')
+        i += cols
+    html.append('</div>')
+    return ''.join(html)
 
 def load_sheet_posts():
     url = os.environ.get('NEWS_CSV_URL') or CONFIG.get('newsCsvUrl')
@@ -152,25 +215,26 @@ def load_sheet_posts():
                 cats.append(CAT_BY_NAME[name]['id'])
         if not cats:
             cats = [CONFIG.get('defaultCategory', 4)]
-        imgs = []
+        photos = []
         for i in range(1, 11):
             u = r.get('画像%d' % i) or ''
             if u.strip():
-                p = save_image(u, '%s-%d' % (key, i))
-                if p:
-                    imgs.append(p)
-        body = text_to_html(r.get('本文'))
-        if imgs:
-            figs = ''.join('<figure class="wp-block-image size-large"><img src="%s" alt="" loading="lazy"></figure>' % p for p in imgs)
-            if len(imgs) > 1:
-                body += '<figure class="wp-block-gallery has-nested-images columns-2 is-cropped wp-block-gallery-is-layout-flex">%s</figure>' % figs
-            else:
-                body += figs
+                saved = save_image(u, '%s-%d' % (key, i))
+                if saved:
+                    photos.append(saved + ((r.get('説明%d' % i) or ''),))
+        banner = None
+        if (r.get('バナー画像') or '').strip():
+            saved = save_image(r['バナー画像'], '%s-banner' % key)
+            banner = saved[0] if saved else None
+        if not banner and photos:
+            banner = photos[0][0]  # バナー画像が空なら画像1を使う
+        body = (text_to_html(r.get('本文')) + gallery_html(photos, r.get('写真の並び'))
+                + text_to_html(r.get('締めの文')))  # 写真の下の締めの文
         text = re.sub(r'\s+', ' ', r.get('本文') or '')
         posts.append({
             'id': 'n' + key, 'path': '/news/%s/' % key, 'title': title,
             'date': d.isoformat(), '_date': d, '_modified': d, 'cats': cats,
-            'thumb': imgs[0] if imgs else CONFIG.get('defaultThumb', ''),
+            'thumb': banner or CONFIG.get('defaultThumb', ''),
             'excerpt': text[:120], 'css': '', 'body': body, 'source': 'sheet',
         })
     print('  お知らせ %d 件' % len(posts))
@@ -359,6 +423,15 @@ POST_BODY_CLASS = read('src/templates/post.bodyclass')
 def build_post(p, prev_p, next_p):
     s = BeautifulSoup(POST_TPL, 'html.parser')
     s.select_one('.page-header-title').string = p['title']
+    # タイトル部分の背景にバナー画像を薄く敷く（WordPress 時代の記事と同じ見た目）
+    if p.get('thumb') and s.head:
+        st = s.new_tag('style', id='sk-page-header-bg')
+        st.string = ('.page-header{position:relative;color:#595959;background:url("%s") no-repeat 50%% center;'
+                     'background-size:cover;min-height:9rem;}'
+                     '.page-header::before{content:"";position:absolute;top:0;left:0;background-color:#ffffff;'
+                     'opacity:0.7;width:100%%;height:100%%;}'
+                     '.page-header-inner{position:relative;}') % p['thumb']
+        s.head.append(st)
     pub = s.select_one('.published')
     if pub:
         pub.string = jdate(p['_date'])

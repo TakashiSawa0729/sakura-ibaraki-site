@@ -28,6 +28,7 @@ function onOpen() {
     .addItem('サイトに今すぐ反映する', 'publishNow')
     .addItem('結果メールを送る（当選・落選）', 'sendResultMails')
     .addSeparator()
+    .addItem('お知らせフォームを作る（初回のみ）', 'createNewsForm')
     .addItem('初期設定（シートを作る）', 'setup')
     .addToUi();
 }
@@ -139,7 +140,7 @@ function newsImage_(id) {
   var allowed = false;
   newsRows_().rows.forEach(function (r) {
     Object.keys(r).forEach(function (k) {
-      if (/^画像/.test(k) && String(r[k]).indexOf(id) >= 0) allowed = true;
+      if (/^(画像|バナー画像)/.test(k) && String(r[k]).indexOf(id) >= 0) allowed = true;
     });
   });
   if (!allowed) return { ok: false, error: 'not published' };
@@ -409,6 +410,106 @@ function sendResultMails() {
   ui.alert(sent + ' 件のメールを送りました。' + (failed.length ? '\n送れなかったもの:\n' + failed.join('\n') : ''));
 }
 
+// ------------------------------------------------------------------ お知らせ投稿フォーム
+var NEWS_FORM_HELP_CLOSING = '写真の下に表示されます。まとめのひと言やお知らせなど（空欄でもかまいません）。';
+var NEWS_FORM_HELP_LAYOUT = '1段ごとの枚数をカンマで区切って書きます。例：3,3（3枚×2段）／3,2,3／1,2,2（1枚目を大きく）。空欄なら3枚ずつ並びます。';
+
+/**
+ * お知らせ投稿用の Google フォームを作り、送信されたら「お知らせ」タブに1行追加されるようにする（初回だけ実行）。
+ * ※ ファイルのアップロードの設問はプログラムから作れないため、「バナー画像」「画像1〜10」は
+ *   いったん文字の設問として作り、フォームの編集画面で種類を「ファイルのアップロード」に変えます。
+ */
+function createNewsForm() {
+  var ss = SpreadsheetApp.getActive();
+  var props = PropertiesService.getScriptProperties();
+  if (props.getProperty('NEWS_FORM_ID')) {
+    SpreadsheetApp.getUi().alert('お知らせフォームは作成済みです。\n' + FormApp.openById(props.getProperty('NEWS_FORM_ID')).getEditUrl());
+    return;
+  }
+  var form = FormApp.create('さくらこども園 お知らせ投稿');
+  form.setDescription('ここで送ったお知らせは、1時間以内にホームページに掲載されます。\n写真の下に出る説明は、写真ごとに入れられます（空欄でもかまいません）。')
+      .setConfirmationMessage('送信しました。1時間以内にホームページに掲載されます。')
+      .setAllowResponseEdits(false)
+      .setProgressBar(false);
+  form.addDateItem().setTitle('日付').setRequired(true);
+  form.addTextItem().setTitle('タイトル').setRequired(true);
+  form.addMultipleChoiceItem().setTitle('カテゴリ').setChoiceValues(['さくらこども園', 'さくらランド', 'カラフル']).setRequired(true);
+  form.addParagraphTextItem().setTitle('本文').setHelpText('写真の上に表示されます。空行で段落が分かれます。');
+  form.addTextItem().setTitle('バナー画像').setHelpText('一覧やトップに出る写真。空欄なら画像1を使います。');
+  form.addTextItem().setTitle('写真の並び').setHelpText(NEWS_FORM_HELP_LAYOUT);
+  form.addPageBreakItem().setTitle('写真（最大10枚）').setHelpText('使わない欄は空欄のままで大丈夫です。');
+  for (var i = 1; i <= 10; i++) {
+    form.addTextItem().setTitle('画像' + i);
+    form.addTextItem().setTitle('説明' + i);
+  }
+  form.addParagraphTextItem().setTitle('締めの文').setHelpText(NEWS_FORM_HELP_CLOSING);
+  form.setDestination(FormApp.DestinationType.SPREADSHEET, ss.getId());
+  ScriptApp.newTrigger('onNewsFormSubmit').forSpreadsheet(ss).onFormSubmit().create();
+  props.setProperty('NEWS_FORM_ID', form.getId());
+  SpreadsheetApp.getUi().alert('お知らせフォームを作成しました。\n\n編集用: ' + form.getEditUrl() + '\n回答用: ' + form.getPublishedUrl());
+}
+
+/**
+ * （初回のみ・エディタから実行）画像1〜10 の文字の設問を、ファイルのアップロード設問に置き換えます。
+ * Apps Script ではファイルアップロード設問を作ることも複製することもできないため、
+ * 先にフォームの編集画面で「バナー画像」を画像のみ・1枚の設定にして10回複製しておき、
+ * その複製を「画像1〜10」の位置に移して名前を付け替えます。
+ */
+function convertNewsImageItems() {
+  var form = FormApp.openById(PropertiesService.getScriptProperties().getProperty('NEWS_FORM_ID'));
+  var copies = form.getItems(FormApp.ItemType.FILE_UPLOAD)
+      .filter(function (it) { return it.getTitle() === 'バナー画像'; }).slice(1); // 先頭は本物のバナー画像
+  var done = 0;
+  for (var i = 1; i <= 10 && copies.length; i++) {
+    var old = form.getItems(FormApp.ItemType.TEXT).filter(function (it) { return it.getTitle() === '画像' + i; })[0];
+    if (!old) continue;
+    var copy = copies.shift();
+    copy.setTitle('画像' + i).setHelpText('');
+    form.moveItem(copy, old.getIndex());
+    form.deleteItem(form.getItems(FormApp.ItemType.TEXT).filter(function (it) { return it.getTitle() === '画像' + i; })[0]);
+    done++;
+  }
+  Logger.log(done + ' 個の設問をファイルのアップロードに置き換えました（余った複製: ' + copies.length + '）');
+}
+
+/** （エディタから1回だけ実行）作成済みのフォームの最後に「締めの文」の設問を足す */
+function addNewsClosingItem() {
+  var form = FormApp.openById(PropertiesService.getScriptProperties().getProperty('NEWS_FORM_ID'));
+  var has = form.getItems().some(function (it) { return it.getTitle() === '締めの文'; });
+  if (!has) form.addParagraphTextItem().setTitle('締めの文').setHelpText(NEWS_FORM_HELP_CLOSING);
+  Logger.log(has ? 'すでにあります' : '「締めの文」を追加しました');
+}
+
+/** フォームが送信されたら「お知らせ」タブに1行追加（公開にチェック） */
+function onNewsFormSubmit(e) {
+  var formId = PropertiesService.getScriptProperties().getProperty('NEWS_FORM_ID');
+  if (!formId || !e || !e.namedValues) return;
+  // 同じスプレッドシートに別のフォームがつながっていても、お知らせフォームの回答だけを処理する
+  if (e.range && e.range.getSheet().getFormUrl && e.range.getSheet().getFormUrl() &&
+      e.range.getSheet().getFormUrl().indexOf(formId) < 0) return;
+  var v = e.namedValues;
+  // 同じ名前の列が複数あっても（設問を作り直した場合など）、空でない最初の値を使う
+  var get = function (k) { return (v[k] || []).map(function (x) { return String(x).trim(); }).filter(String)[0] || ''; };
+  var firstFile = function (k) { return get(k).split(/\s*,\s*/)[0] || ''; };
+  var sh = SpreadsheetApp.getActive().getSheetByName(SHEETS.news);
+  var head = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+  var row = head.map(function (h) {
+    if (h === 'ID') return Utilities.getUuid().slice(0, 8);
+    if (h === '公開') return true;
+    if (h === '日付') { var d = get('日付'); return d ? new Date(d.replace(/-/g, '/')) : new Date(); }
+    if (h === 'バナー画像' || /^画像\d+$/.test(h)) return firstFile(h);
+    if (h === 'メモ') return 'フォームから投稿' + (get('メールアドレス') ? '（' + get('メールアドレス') + '）' : '');
+    return get(h);
+  });
+  // 空いている最初の行（チェックボックスだけの行）に書く
+  var ids = sh.getRange(2, 1, Math.max(sh.getMaxRows() - 1, 1), 4).getValues();
+  var target = sh.getMaxRows() + 1;
+  for (var i = 0; i < ids.length; i++) {
+    if (!ids[i][0] && !ids[i][3]) { target = i + 2; break; }
+  }
+  sh.getRange(target, 1, 1, row.length).setValues([row]);
+}
+
 // ------------------------------------------------------------------ お問い合わせ
 function contact_(b) {
   var fields = formFields_('contact').fields;
@@ -450,12 +551,15 @@ function setup() {
     return sh;
   }
   // お知らせ
-  var news = sheet(SHEETS.news, ['ID', '公開', '日付', 'タイトル', 'カテゴリ', '本文', '画像1', '画像2', '画像3', '画像4', '画像5', '画像6', 'メモ'],
-                   [80, 50, 110, 260, 120, 420, 160, 160, 160, 160, 160, 160, 160]);
+  var newsHead = ['ID', '公開', '日付', 'タイトル', 'カテゴリ', 'バナー画像', '本文', '写真の並び'];
+  for (var n = 1; n <= 10; n++) newsHead.push('画像' + n, '説明' + n);
+  newsHead.push('締めの文', 'メモ');
+  var news = sheet(SHEETS.news, newsHead, [80, 50, 110, 260, 120, 160, 380, 90]);
   news.getRange('B2:B1000').insertCheckboxes();
   news.getRange('C2:C1000').setNumberFormat('yyyy/mm/dd');
   news.getRange('E2:E1000').setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(['さくらこども園', 'さくらランド', 'カラフル'], true).build());
-  news.getRange('F2:F1000').setWrap(true);
+  news.getRange('G2:G1000').setWrap(true);
+  news.getRange('H2:H1000').setNumberFormat('@');
 
   // 予約枠
   var slots = sheet(SHEETS.slots, ['ID', '施設', '日付', '開始時刻', 'イベント名', '定員', '締切（開始の何分前）', '受付中', '受付方式', '予約数'],

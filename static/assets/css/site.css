@@ -11,3 +11,17 @@
 
 /* 記事本文の画像が横にはみ出さないように */
 .entry-body img { max-width: 100%; height: auto; }
+
+/* お知らせの写真（スプレッドシートの「写真の並び」で1行ごとの枚数を指定） */
+.sk-gallery { margin: 1.5em 0; }
+.sk-gallery-row { display: grid; grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr)); gap: 16px; margin-bottom: 16px; }
+.sk-photo { margin: 0; }
+.sk-photo img { display: block; width: 100%; height: auto; border-radius: 8px; background: #f3efe9; }
+.sk-gallery-row:not([data-cols="1"]) .sk-photo img { aspect-ratio: 4 / 3; object-fit: cover; }
+.sk-photo figcaption { margin-top: .5em; line-height: 1.6; text-align: center; }
+@media (max-width: 575px) {
+  .sk-gallery-row { gap: 10px; margin-bottom: 10px; }
+  .sk-gallery-row[data-cols="3"], .sk-gallery-row[data-cols="4"], .sk-gallery-row[data-cols="5"], .sk-gallery-row[data-cols="6"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+/* 1枚だけの行：縦長の写真が画面を埋めないように高さを抑えて中央に */
+.sk-gallery-row[data-cols="1"] .sk-photo img { width: auto; max-width: 100%; max-height: 80vh; margin: 0 auto; }
